@@ -19,7 +19,8 @@ Tryb wielu witryn (`IWpClientFactory`) dla hostów, które trzymają dane dostę
 
 - WordPress 7.x (API `wp/v2` i Application Passwords są częścią rdzenia; biblioteka nie używa żadnych wtyczek).
 - Witryna po **HTTPS** - WordPress domyślnie nie przyjmuje Application Passwords po zwykłym HTTP
-  (wyjątek: środowisko lokalne).
+  (wyjątek: środowisko lokalne). Biblioteka też odmawia wysłania poświadczeń na adres `http://` - dla lokalnej
+  witryny deweloperskiej trzeba świadomie ustawić `AllowInsecureHttp = true`.
 - Użytkownik z rolą **Redaktor** lub **Administrator** (uprawnienie `edit_pages`). Hasło aplikacji generuje się
   w WP Admin → Użytkownicy → Profil → „Hasła aplikacji". WordPress pokazuje je ze spacjami - można je wkleić
   w tej postaci.
@@ -124,6 +125,11 @@ var all = await wpPageService.GetAllAsync(new WpPageQuery { Status = new List<st
 `WpPageQuery.Context` domyślnie to `Edit` (pełne dane, wymaga uprawnień). Do anonimowego odczytu opublikowanych
 stron użyj `WpContext.View` i `AuthMode = WpAuthMode.None`.
 
+Slug musi być pojedynczym slugiem WordPressa - bez przecinków i białych znaków (REST API potraktowałoby je jako
+listę kilku slugów, np. `nowa,regulamin` dopasowałby też stronę `regulamin`). Taka wartość kończy się
+`ArgumentException` zanim cokolwiek zostanie wysłane, a `GetBySlugAsync` dodatkowo porównuje slug zwróconej strony
+z żądanym, więc `CreateOrUpdateBySlugAsync` nigdy nie nadpisze innej strony niż ta, o którą prosisz.
+
 ## Usuwanie
 
 ```csharp
@@ -187,6 +193,7 @@ var pageService = wpClientFactory.CreatePageService(new WpOptions
 | `AuthMode` | `ApplicationPassword` | `ApplicationPassword`, `BearerToken` (wtyczka JWT) lub `None` (tylko odczyt publiczny) |
 | `Username`, `ApplicationPassword` | - | login i hasło aplikacji |
 | `BearerToken` | - | token dla `AuthMode = BearerToken` |
+| `AllowInsecureHttp` | `false` | zgoda na wysyłanie poświadczeń na `http://` - tylko dla lokalnej witryny deweloperskiej |
 | `HttpTimeoutSeconds` | `100` | limit czasu żądania |
 
 Opcje są sprawdzane przy pierwszym użyciu klienta (nie przy starcie hosta) - niepełna sekcja `Wp` nie blokuje

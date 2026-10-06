@@ -246,12 +246,26 @@ public class WpApiClient : IWpApiClient
             parameters.Add(new KeyValuePair<string, string>(name, value));
     }
 
-    /// <summary>WordPress accepts array parameters as comma-separated lists (wp_parse_list).</summary>
+    /// <summary>
+    /// WordPress accepts array parameters as comma-separated lists (wp_parse_list splits on commas and whitespace).
+    /// A single value containing either would silently turn into several values - e.g. a slug built from user input
+    /// such as "nowa,regulamin" would also match the page "regulamin" - so such values are rejected.
+    /// </summary>
     private static void AddList(List<KeyValuePair<string, string>> parameters, string name, IEnumerable<string>? values)
     {
-        var items = values?.Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
-        if (items is { Count: > 0 })
-            parameters.Add(new KeyValuePair<string, string>(name, string.Join(",", items)));
+        var items = values?.Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim()).ToList();
+        if (items is not { Count: > 0 })
+            return;
+
+        var invalid = items.FirstOrDefault(v => v.Contains(',') || v.Any(char.IsWhiteSpace));
+        if (invalid != null)
+        {
+            throw new ArgumentException(
+                $"Query parameter '{name}' value '{invalid}' must not contain commas or whitespace - WordPress would split it into several values.",
+                name);
+        }
+
+        parameters.Add(new KeyValuePair<string, string>(name, string.Join(",", items)));
     }
 
     private static List<KeyValuePair<string, string>> Parameter(string name, string value) =>

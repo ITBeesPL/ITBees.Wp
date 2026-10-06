@@ -87,6 +87,40 @@ public class WpPageServiceTests
     }
 
     [Fact]
+    public async Task GetBySlugAsync_RejectsSlugsWordPressWouldReadAsAList()
+    {
+        var handler = new FakeWpHandler(_ => throw new InvalidOperationException("no request expected"));
+        var service = Service(handler);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.GetBySlugAsync("tenant-7-nowa,regulamin"));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.GetBySlugAsync("nowa regulamin"));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.GetBySlugAsync("   "));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.CreateOrUpdateBySlugAsync(new WpPageIm { Slug = "nowa,regulamin", Title = "Nowa" }));
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task CreateOrUpdateBySlugAsync_NeverWritesToAPageWhoseSlugDiffersFromTheRequestedOne()
+    {
+        // WordPress answered the slug filter with another page (a plugin rewriting the query, a quirk in matching) -
+        // the lookup must come back empty and the upsert must create instead of overwriting that page.
+        var handler = new FakeWpHandler(request => request.Method == HttpMethod.Get
+            ? FakeWpHandler.Json(HttpStatusCode.OK, "[" + FakeWpHandler.PageJson(21, "regulamin", "publish") + "]",
+                Totals(1, 1))
+            : FakeWpHandler.Json(HttpStatusCode.Created, FakeWpHandler.PageJson(22, "nowa", "draft")));
+        var service = Service(handler);
+
+        var found = await service.GetBySlugAsync("nowa");
+        var page = await service.CreateOrUpdateBySlugAsync(new WpPageIm { Slug = "nowa", Title = "Nowa" });
+
+        Assert.Null(found);
+        Assert.Equal(22, page.Id);
+        Assert.Equal("https://example.com/wp-json/wp/v2/pages", handler.Requests.Last().Url);
+        Assert.DoesNotContain(handler.Requests, r => r.Url.EndsWith("/pages/21"));
+    }
+
+    [Fact]
     public async Task GetBySlugAsync_ReturnsNullWhenNothingMatches()
     {
         var handler = new FakeWpHandler(_ => FakeWpHandler.Json(HttpStatusCode.OK, "[]", Totals(0, 0)));

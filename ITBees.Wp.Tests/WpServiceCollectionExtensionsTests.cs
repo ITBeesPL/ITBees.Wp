@@ -45,10 +45,11 @@ public class WpServiceCollectionExtensionsTests
         services.AddLogging();
         services.AddITBeesWp(new WpOptions
         {
-            SiteUrl = "https://example.com",
+            SiteUrl = "http://localhost:8080",
             AuthMode = WpAuthMode.BearerToken,
             BearerToken = "jwt",
             UseRestRouteQuery = true,
+            AllowInsecureHttp = true,
             HttpTimeoutSeconds = 15
         });
 
@@ -58,7 +59,9 @@ public class WpServiceCollectionExtensionsTests
         Assert.Equal(WpAuthMode.BearerToken, options.AuthMode);
         Assert.Equal("jwt", options.BearerToken);
         Assert.True(options.UseRestRouteQuery);
+        Assert.True(options.AllowInsecureHttp);
         Assert.Equal(15, options.HttpTimeoutSeconds);
+        // Resolving the client validates the options - http:// passes only because AllowInsecureHttp was copied too.
         Assert.NotNull(provider.GetRequiredService<IWpApiClient>());
     }
 

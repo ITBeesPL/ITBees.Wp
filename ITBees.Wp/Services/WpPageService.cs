@@ -21,19 +21,38 @@ public class WpPageService : IWpPageService
     public async Task<WpPage?> GetBySlugAsync(string slug, WpContext context = WpContext.Edit,
         IEnumerable<string>? statuses = null, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(slug))
-            throw new ArgumentException("Slug must not be empty.", nameof(slug));
+        var requestedSlug = ValidateSingleSlug(slug, nameof(slug));
 
         var result = await _wpApiClient.GetPagesAsync(new WpPageQuery
         {
-            Slug = new List<string> { slug.Trim() },
+            Slug = new List<string> { requestedSlug },
             // Drafts and private pages have slugs too - without "any" WordPress would search published pages only.
             Status = statuses?.ToList() ?? new List<string> { WpPageStatuses.Any },
             Context = context,
             PerPage = 1
         }, ct);
 
-        return result.Items.FirstOrDefault();
+        // A write may follow (CreateOrUpdateBySlugAsync), so never trust the filter alone: only an exact slug match
+        // counts. WordPress stores slugs in lower case, hence the case-insensitive comparison.
+        return result.Items.FirstOrDefault(page => string.Equals(page.Slug, requestedSlug, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// A WordPress slug never contains whitespace or commas, and the REST API would read a value with them as a list
+    /// of several slugs - a slug assembled from untrusted input could then point the lookup at another page.
+    /// </summary>
+    private static string ValidateSingleSlug(string? slug, string parameterName)
+    {
+        var trimmed = slug?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+            throw new ArgumentException("Slug must not be empty.", parameterName);
+        if (trimmed.Contains(',') || trimmed.Any(char.IsWhiteSpace))
+        {
+            throw new ArgumentException(
+                $"Slug '{trimmed}' is not a single WordPress slug - commas and whitespace are not allowed.", parameterName);
+        }
+
+        return trimmed;
     }
 
     public Task<WpPagedResult<WpPage>> GetPaginatedAsync(WpPageQuery query, CancellationToken ct = default) =>
@@ -84,7 +103,8 @@ public class WpPageService : IWpPageService
         if (string.IsNullOrWhiteSpace(page.Slug))
             throw new ArgumentException("WpPageIm.Slug is required to create or update a page by slug.", nameof(page));
 
-        var existing = await GetBySlugAsync(page.Slug, WpContext.Edit, statuses: null, ct);
+        var slug = ValidateSingleSlug(page.Slug, nameof(page));
+        var existing = await GetBySlugAsync(slug, WpContext.Edit, statuses: null, ct);
         if (existing == null)
             return await CreateAsync(page, ct);
 

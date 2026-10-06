@@ -63,6 +63,7 @@ public static class WpServiceCollectionExtensions
         target.Username = source.Username;
         target.ApplicationPassword = source.ApplicationPassword;
         target.BearerToken = source.BearerToken;
+        target.AllowInsecureHttp = source.AllowInsecureHttp;
         target.HttpTimeoutSeconds = source.HttpTimeoutSeconds;
     }
 }

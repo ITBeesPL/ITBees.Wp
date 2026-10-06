@@ -35,6 +35,13 @@ public class WpOptions
     /// <summary>Token sent as "Authorization: Bearer" when <see cref="AuthMode"/> is <see cref="WpAuthMode.BearerToken"/>.</summary>
     public string BearerToken { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Allows credentials to be sent to a plain "http://" site. Off by default: an Application Password or bearer
+    /// token travels in clear text over HTTP, and WordPress itself accepts Application Passwords without HTTPS only
+    /// on local development sites - the single case this switch is meant for.
+    /// </summary>
+    public bool AllowInsecureHttp { get; set; }
+
     public int HttpTimeoutSeconds { get; set; } = 100;
 
     /// <summary>Absolute URL of the REST API root with a trailing slash, e.g. "https://example.com/wp-json/".</summary>
@@ -52,6 +59,14 @@ public class WpOptions
         {
             throw new InvalidOperationException(
                 "WpOptions.SiteUrl must be an absolute http(s) address of the WordPress site, e.g. https://example.com.");
+        }
+
+        // Checked before any request is built: the Authorization header goes out with the very first call.
+        if (uri.Scheme == Uri.UriSchemeHttp && AuthMode != WpAuthMode.None && !AllowInsecureHttp)
+        {
+            throw new InvalidOperationException(
+                "WpOptions.SiteUrl uses plain http:// - the credentials would be sent in clear text. Use https://, " +
+                "or set AllowInsecureHttp = true for a local development site only.");
         }
 
         if (!UseRestRouteQuery && string.IsNullOrWhiteSpace(RestApiPath))

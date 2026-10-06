@@ -250,4 +250,47 @@ public class WpApiClientTests
         Assert.Equal("https://example.com/wp-json/", Options().GetRestApiUrl());
         Assert.Equal("https://example.com/?rest_route=/", Options(o => o.UseRestRouteQuery = true).GetRestApiUrl());
     }
+
+    [Fact]
+    public void Options_Validate_RejectsPlainHttpWhenCredentialsWouldBeSent()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => Options(o => o.SiteUrl = "http://example.com").Validate());
+        Assert.Contains("clear text", exception.Message);
+        Assert.Throws<InvalidOperationException>(() => new WpOptions
+        {
+            SiteUrl = "http://example.com",
+            AuthMode = WpAuthMode.BearerToken,
+            BearerToken = "jwt"
+        }.Validate());
+
+        // Nothing to leak without credentials; a local development site needs the explicit opt-in.
+        new WpOptions { SiteUrl = "http://example.com", AuthMode = WpAuthMode.None }.Validate();
+        Options(o =>
+        {
+            o.SiteUrl = "http://localhost:8080";
+            o.AllowInsecureHttp = true;
+        }).Validate();
+    }
+
+    [Fact]
+    public void Client_RefusesToStartWithCredentialsOverPlainHttp()
+    {
+        var handler = new FakeWpHandler(_ => throw new InvalidOperationException("no request expected"));
+
+        Assert.Throws<InvalidOperationException>(() => Client(handler, o => o.SiteUrl = "http://example.com"));
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task GetPagesAsync_RejectsListValuesThatWordPressWouldSplit()
+    {
+        var handler = new FakeWpHandler(_ => throw new InvalidOperationException("no request expected"));
+        var client = Client(handler);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            client.GetPagesAsync(new WpPageQuery { Slug = new List<string> { "tenant-7-nowa,regulamin" } }));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            client.GetPagesAsync(new WpPageQuery { Status = new List<string> { "draft publish" } }));
+        Assert.Empty(handler.Requests);
+    }
 }
